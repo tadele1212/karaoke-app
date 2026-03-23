@@ -7,6 +7,10 @@ import 'package:flutter/services.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
   runApp(const KaraokeApp());
 }
 
@@ -24,13 +28,169 @@ class KaraokeApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: Colors.black,
       ),
-      home: const KaraokePage(),
+      home: const KaraokeHomePage(),
+    );
+  }
+}
+
+class KaraokeHomePage extends StatefulWidget {
+  const KaraokeHomePage({super.key});
+
+  @override
+  State<KaraokeHomePage> createState() => _KaraokeHomePageState();
+}
+
+class _KaraokeHomePageState extends State<KaraokeHomePage> {
+  bool _chengSelected = false;
+
+  static const String _chengAudioAsset = 'assets/videos/Cheng_li_lyrics.mp4';
+  static const String _chengKaraokeAsset = 'assets/videos/Cheng_li_karaoke.mp4';
+
+  @override
+  Widget build(BuildContext context) {
+    const chengColor = Color(0xFF7C4DFF);
+    const audioColor = Color(0xFF2196F3);
+    const karaokeColor = Color(0xFFE91E63);
+
+    final audioEnabled = _chengSelected;
+    final karaokeEnabled = _chengSelected;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 64, // shorter button height
+                  child: InkWell(
+                    onTap: () {
+                      setState(() => _chengSelected = true);
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: chengColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _chengSelected
+                              ? Colors.yellowAccent
+                              : Colors.white.withValues(alpha: 0.25),
+                          width: 2,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: const Text(
+                        'Cheng li',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildModeButton(
+                        label: 'Audio',
+                        color: audioColor,
+                        enabled: audioEnabled,
+                        onTap: audioEnabled
+                            ? () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const KaraokePage(
+                                      initialAssetPath: _chengAudioAsset,
+                                      autoPlay: true,
+                                    ),
+                                  ),
+                                );
+                              }
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildModeButton(
+                        label: 'Karaoke',
+                        color: karaokeColor,
+                        enabled: karaokeEnabled,
+                        onTap: karaokeEnabled
+                            ? () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const KaraokePage(
+                                      initialAssetPath: _chengKaraokeAsset,
+                                      autoPlay: true,
+                                    ),
+                                  ),
+                                );
+                              }
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeButton({
+    required String label,
+    required Color color,
+    required bool enabled,
+    required VoidCallback? onTap,
+  }) {
+    final effectiveColor = enabled ? color : color.withValues(alpha: 0.35);
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: effectiveColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: enabled ? Colors.white.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.12),
+            width: 1.2,
+          ),
+        ),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: enabled ? Colors.white : Colors.white70,
+          ),
+        ),
+      ),
     );
   }
 }
 
 class KaraokePage extends StatefulWidget {
-  const KaraokePage({super.key});
+  const KaraokePage({
+    super.key,
+    this.initialAssetPath,
+    this.autoPlay = false,
+  });
+
+  final String? initialAssetPath;
+  final bool autoPlay;
 
   @override
   State<KaraokePage> createState() => _KaraokePageState();
@@ -52,7 +212,7 @@ class _KaraokePageState extends State<KaraokePage> {
   String? _errorMessage;
 
   bool _controlsVisible = false;
-  bool _lockLandscape = false;
+  bool _showVideoList = false;
   Timer? _hideControlsTimer;
   Timer? _positionTimer;
   Duration _position = Duration.zero;
@@ -62,6 +222,32 @@ class _KaraokePageState extends State<KaraokePage> {
   void initState() {
     super.initState();
     _loadVideoAssets();
+    _setLandscapeOnly();
+    _enterImmersiveMode();
+  }
+
+  Future<void> _setLandscapeOnly() async {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
+  Future<void> _setPortraitOnly() async {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
+
+  Future<void> _enterImmersiveMode() async {
+    // Hide Android system UI (navigation buttons) like normal video players.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  Future<void> _exitImmersiveMode() async {
+    // Restore default system UI behavior when leaving the screen.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   Future<void> _loadVideoAssets() async {
@@ -96,8 +282,18 @@ class _KaraokePageState extends State<KaraokePage> {
       }
 
       _videoAssets = assets;
-      _selectedVideo = _selectedVideo ?? _videoAssets.first;
+      final initialAsset = widget.initialAssetPath;
+      _selectedVideo = (initialAsset != null && assets.contains(initialAsset))
+          ? initialAsset
+          : _videoAssets.first;
+      setState(() {
+        _controlsVisible = false;
+        _showVideoList = false;
+      });
       await _initPlayersForVideo(_selectedVideo!);
+      if (widget.autoPlay) {
+        await _playActive(showControls: false);
+      }
     } catch (e) {
       setState(() {
         _isInitializing = false;
@@ -163,20 +359,23 @@ class _KaraokePageState extends State<KaraokePage> {
   void dispose() {
     _stopPositionTimer();
     _cancelHideTimer();
-    _resetOrientationPreferences();
     _controllerSinger?.dispose();
     _controllerKaraoke?.dispose();
+    _exitImmersiveMode();
+    _setPortraitOnly();
     super.dispose();
   }
 
-  Future<void> _playActive() async {
+  Future<void> _playActive({bool showControls = true}) async {
     final controller = _activeController;
     if (controller == null) return;
     if (!controller.value.isInitialized) return;
 
     await controller.play();
     _syncPositionFromController();
-    _showControlsTemporarily();
+    if (showControls) {
+      _showControlsTemporarily();
+    }
   }
 
   Future<void> _pauseActive() async {
@@ -232,8 +431,23 @@ class _KaraokePageState extends State<KaraokePage> {
       if (!mounted) return;
       setState(() {
         _controlsVisible = false;
+        _showVideoList = false;
       });
     });
+  }
+
+  void _toggleVideoListPanel() {
+    if (!mounted) return;
+    final next = !_showVideoList;
+    setState(() {
+      _showVideoList = next;
+      _controlsVisible = true;
+    });
+    if (next) {
+      _cancelHideTimer();
+    } else {
+      _showControlsTemporarily();
+    }
   }
 
   Future<void> _seekTo(Duration target) async {
@@ -283,31 +497,6 @@ class _KaraokePageState extends State<KaraokePage> {
     await _playActive();
   }
 
-  Future<void> _toggleOrientationLock() async {
-    final nextLockLandscape = !_lockLandscape;
-    setState(() {
-      _lockLandscape = nextLockLandscape;
-    });
-
-    if (nextLockLandscape) {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-    } else {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-    }
-
-    _showControlsTemporarily();
-  }
-
-  void _resetOrientationPreferences() {
-    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-  }
-
   String _formatTime(Duration d) {
     final totalSeconds = d.inSeconds;
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
@@ -320,36 +509,30 @@ class _KaraokePageState extends State<KaraokePage> {
     final controller = _activeController;
 
     return Scaffold(
-      appBar: _lockLandscape
-          ? null
-          : AppBar(
-              title: const Text('Karaoke Player'),
-            ),
       body: SafeArea(
-        child: _lockLandscape
-            ? // Fullscreen experience in landscape: only video + overlay.
-            Center(
-                child: _buildVideoArea(controller),
-              )
-            : Column(
-                children: [
-                  Expanded(
-                    child: Center(
-                      child: _buildVideoArea(controller),
-                    ),
-                  ),
-                  _buildVideoList(),
-                  if (_errorMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Text(
-                        _errorMessage!,
-                        style: const TextStyle(color: Colors.redAccent),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                ],
+        child: Stack(
+          children: [
+            Center(child: _buildVideoArea(controller)),
+            if (_showVideoList)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildVideoList(),
               ),
+            if (_errorMessage != null)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 80,
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.redAccent),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -376,6 +559,7 @@ class _KaraokePageState extends State<KaraokePage> {
               if (assetPath == _selectedVideo) return;
               setState(() {
                 _selectedVideo = assetPath;
+                _showVideoList = false;
               });
               await _initPlayersForVideo(assetPath);
             },
@@ -452,7 +636,7 @@ class _KaraokePageState extends State<KaraokePage> {
         color: Colors.transparent,
         child: InkResponse(
           radius: 48,
-          onTap: _isInitializing ? null : _playActive,
+          onTap: _isInitializing ? null : () => _playActive(),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.35),
@@ -543,19 +727,19 @@ class _KaraokePageState extends State<KaraokePage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    (_selectedVideo ?? '').split('/').last,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70),
+                  Expanded(
+                    child: Text(
+                      (_selectedVideo ?? '').split('/').last,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
                   ),
                   IconButton(
-                    tooltip: _lockLandscape
-                        ? 'Switch to portrait'
-                        : 'Switch to landscape',
-                    onPressed: _toggleOrientationLock,
+                    tooltip: _showVideoList ? 'Hide list' : 'Show list',
+                    onPressed: _toggleVideoListPanel,
                     icon: Icon(
-                      _lockLandscape ? Icons.stay_current_portrait : Icons.stay_current_landscape,
+                      _showVideoList ? Icons.close : Icons.list,
                       color: Colors.white,
                     ),
                   ),
