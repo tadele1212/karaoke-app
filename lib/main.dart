@@ -8,8 +8,8 @@ import 'package:flutter/services.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
   ]);
   runApp(const KaraokeApp());
 }
@@ -110,6 +110,7 @@ class _KaraokeHomePageState extends State<KaraokeHomePage> {
                                     builder: (_) => const KaraokePage(
                                       initialAssetPath: _chengAudioAsset,
                                       autoPlay: true,
+                                      songTitle: 'Cheng li',
                                     ),
                                   ),
                                 );
@@ -130,6 +131,7 @@ class _KaraokeHomePageState extends State<KaraokeHomePage> {
                                     builder: (_) => const KaraokePage(
                                       initialAssetPath: _chengKaraokeAsset,
                                       autoPlay: true,
+                                      songTitle: 'Cheng li',
                                     ),
                                   ),
                                 );
@@ -187,10 +189,12 @@ class KaraokePage extends StatefulWidget {
     super.key,
     this.initialAssetPath,
     this.autoPlay = false,
+    required this.songTitle,
   });
 
   final String? initialAssetPath;
   final bool autoPlay;
+  final String songTitle;
 
   @override
   State<KaraokePage> createState() => _KaraokePageState();
@@ -204,19 +208,20 @@ class _KaraokePageState extends State<KaraokePage> {
 
   List<String> _videoAssets = [];
   String? _selectedVideo;
-  VideoPlayerController? _controllerSinger;
-  VideoPlayerController? _controllerKaraoke;
-  VideoPlayerController? _activeController;
+  VideoPlayerController? _controller;
 
   bool _isInitializing = true;
   String? _errorMessage;
 
   bool _controlsVisible = false;
-  bool _showVideoList = false;
   Timer? _hideControlsTimer;
   Timer? _positionTimer;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  bool _isScrubbing = false;
+  Duration _scrubPosition = Duration.zero;
+  bool _wasPlayingBeforeScrub = false;
+  int _lastScrubStepMs = -1;
 
   @override
   void initState() {
@@ -230,13 +235,6 @@ class _KaraokePageState extends State<KaraokePage> {
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
-    ]);
-  }
-
-  Future<void> _setPortraitOnly() async {
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
     ]);
   }
 
@@ -288,7 +286,6 @@ class _KaraokePageState extends State<KaraokePage> {
           : _videoAssets.first;
       setState(() {
         _controlsVisible = false;
-        _showVideoList = false;
       });
       await _initPlayersForVideo(_selectedVideo!);
       if (widget.autoPlay) {
@@ -320,25 +317,13 @@ class _KaraokePageState extends State<KaraokePage> {
     _stopPositionTimer();
     _cancelHideTimer();
 
-    await _controllerSinger?.dispose();
-    await _controllerKaraoke?.dispose();
-
-    _controllerSinger = null;
-    _controllerKaraoke = null;
-    _activeController = null;
+    await _controller?.dispose();
+    _controller = null;
 
     try {
-      final singerController = VideoPlayerController.asset(assetPath);
-      final karaokeController = VideoPlayerController.asset(assetPath);
-
-      await Future.wait([
-        singerController.initialize(),
-        karaokeController.initialize(),
-      ]);
-
-      _controllerSinger = singerController;
-      _controllerKaraoke = karaokeController;
-      _activeController = _controllerSinger;
+      final controller = VideoPlayerController.asset(assetPath);
+      await controller.initialize();
+      _controller = controller;
 
       setState(() {
         _isInitializing = false;
@@ -359,15 +344,13 @@ class _KaraokePageState extends State<KaraokePage> {
   void dispose() {
     _stopPositionTimer();
     _cancelHideTimer();
-    _controllerSinger?.dispose();
-    _controllerKaraoke?.dispose();
+    _controller?.dispose();
     _exitImmersiveMode();
-    _setPortraitOnly();
     super.dispose();
   }
 
   Future<void> _playActive({bool showControls = true}) async {
-    final controller = _activeController;
+    final controller = _controller;
     if (controller == null) return;
     if (!controller.value.isInitialized) return;
 
@@ -379,7 +362,7 @@ class _KaraokePageState extends State<KaraokePage> {
   }
 
   Future<void> _pauseActive() async {
-    final controller = _activeController;
+    final controller = _controller;
     if (controller == null) return;
     if (!controller.value.isInitialized) return;
 
@@ -389,7 +372,7 @@ class _KaraokePageState extends State<KaraokePage> {
   }
 
   void _syncPositionFromController() {
-    final controller = _activeController;
+    final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final nextPosition = controller.value.position;
     final nextDuration = controller.value.duration;
@@ -404,8 +387,9 @@ class _KaraokePageState extends State<KaraokePage> {
   void _startPositionTimer() {
     _positionTimer?.cancel();
     _positionTimer = Timer.periodic(_positionUpdateInterval, (_) {
-      final controller = _activeController;
+      final controller = _controller;
       if (controller == null || !controller.value.isInitialized) return;
+      if (_isScrubbing) return;
       if (!controller.value.isPlaying && !_controlsVisible) return;
       _syncPositionFromController();
     });
@@ -431,27 +415,12 @@ class _KaraokePageState extends State<KaraokePage> {
       if (!mounted) return;
       setState(() {
         _controlsVisible = false;
-        _showVideoList = false;
       });
     });
   }
 
-  void _toggleVideoListPanel() {
-    if (!mounted) return;
-    final next = !_showVideoList;
-    setState(() {
-      _showVideoList = next;
-      _controlsVisible = true;
-    });
-    if (next) {
-      _cancelHideTimer();
-    } else {
-      _showControlsTemporarily();
-    }
-  }
-
   Future<void> _seekTo(Duration target) async {
-    final controller = _activeController;
+    final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final dur = controller.value.duration;
     final clamped = _clampDuration(target, Duration.zero, dur);
@@ -462,6 +431,70 @@ class _KaraokePageState extends State<KaraokePage> {
 
   Future<void> _seekBy(Duration delta) async {
     await _seekTo(_position + delta);
+  }
+
+  Future<void> _onSeekDragStart(double value) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    _cancelHideTimer();
+    _wasPlayingBeforeScrub = controller.value.isPlaying;
+    if (_wasPlayingBeforeScrub) {
+      await controller.pause();
+    }
+    if (!mounted) return;
+    final stepMs = _toHalfSecondStepMs(value);
+    setState(() {
+      _controlsVisible = true;
+      _isScrubbing = true;
+      _scrubPosition = Duration(milliseconds: stepMs);
+      _position = _scrubPosition;
+    });
+    _lastScrubStepMs = stepMs;
+  }
+
+  void _onSeekDragUpdate(double value) {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    final stepMs = _toHalfSecondStepMs(value);
+    if (stepMs == _lastScrubStepMs) return;
+    _lastScrubStepMs = stepMs;
+    final target = Duration(milliseconds: stepMs);
+    if (!mounted) return;
+    setState(() {
+      _controlsVisible = true;
+      _isScrubbing = true;
+      _scrubPosition = target;
+      _position = target;
+    });
+    // Non-blocking seek makes drag updates feel real-time.
+    unawaited(controller.seekTo(target));
+  }
+
+  Future<void> _onSeekDragEnd(double value) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    final target = Duration(milliseconds: _toHalfSecondStepMs(value));
+    await controller.seekTo(target);
+    if (_wasPlayingBeforeScrub) {
+      await controller.play();
+    }
+    _wasPlayingBeforeScrub = false;
+
+    if (!mounted) return;
+    setState(() {
+      _isScrubbing = false;
+      _position = target;
+    });
+    _lastScrubStepMs = -1;
+    _showControlsTemporarily();
+  }
+
+  int _toHalfSecondStepMs(double sliderValueMs) {
+    const step = 500;
+    return ((sliderValueMs / step).round()) * step;
   }
 
   Duration _clampDuration(Duration value, Duration min, Duration max) {
@@ -506,97 +539,53 @@ class _KaraokePageState extends State<KaraokePage> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = _activeController;
+    final controller = _controller;
 
     return Scaffold(
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            Center(child: _buildVideoArea(controller)),
-            if (_showVideoList)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildVideoList(),
-              ),
+            Expanded(
+              child: Center(child: _buildVideoArea(controller)),
+            ),
             if (_errorMessage != null)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 80,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
                   _errorMessage!,
                   style: const TextStyle(color: Colors.redAccent),
                   textAlign: TextAlign.center,
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoList() {
-    if (_videoAssets.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return SizedBox(
-      height: 140,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        scrollDirection: Axis.horizontal,
-        itemCount: _videoAssets.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final assetPath = _videoAssets[index];
-          final isSelected = assetPath == _selectedVideo;
-          final displayName = assetPath.split('/').last;
-
-          return GestureDetector(
-            onTap: () async {
-              if (assetPath == _selectedVideo) return;
-              setState(() {
-                _selectedVideo = assetPath;
-                _showVideoList = false;
-              });
-              await _initPlayersForVideo(assetPath);
-            },
-            child: Container(
-              width: 220,
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.purple : Colors.grey[900],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected ? Colors.white : Colors.grey[700]!,
-                  width: 1.2,
-                ),
-              ),
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+              child: Row(
                 children: [
-                  Text(
-                    displayName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(width: 100),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: Text(
+                        widget.songTitle,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Tap to play',
-                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Return'),
                   ),
                 ],
               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -657,7 +646,7 @@ class _KaraokePageState extends State<KaraokePage> {
   Widget _buildOverlayControls(VideoPlayerController controller) {
     final isPlaying = controller.value.isPlaying;
     final duration = _duration;
-    final position = _position;
+    final position = _isScrubbing ? _scrubPosition : _position;
     final canSeek = duration.inMilliseconds > 0;
 
     return Positioned.fill(
@@ -712,9 +701,13 @@ class _KaraokePageState extends State<KaraokePage> {
                               .toDouble()
                           : 0,
                       max: canSeek ? duration.inMilliseconds.toDouble() : 1,
-                      onChanged: _isInitializing || !canSeek
-                          ? null
-                          : (v) => _seekTo(Duration(milliseconds: v.round())),
+                      divisions: canSeek ? (duration.inMilliseconds / 500).floor() : null,
+                      onChangeStart:
+                          _isInitializing || !canSeek ? null : _onSeekDragStart,
+                      onChanged:
+                          _isInitializing || !canSeek ? null : _onSeekDragUpdate,
+                      onChangeEnd:
+                          _isInitializing || !canSeek ? null : _onSeekDragEnd,
                     ),
                   ),
                   Text(_formatTime(duration),
@@ -722,30 +715,7 @@ class _KaraokePageState extends State<KaraokePage> {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      (_selectedVideo ?? '').split('/').last,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: _showVideoList ? 'Hide list' : 'Show list',
-                    onPressed: _toggleVideoListPanel,
-                    icon: Icon(
-                      _showVideoList ? Icons.close : Icons.list,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
