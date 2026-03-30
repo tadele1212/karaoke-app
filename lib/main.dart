@@ -40,12 +40,80 @@ class KaraokeHomePage extends StatefulWidget {
   State<KaraokeHomePage> createState() => _KaraokeHomePageState();
 }
 
-class _KaraokeHomePageState extends State<KaraokeHomePage> {
-  bool _chengSelected = false;
+/// Song id → `*_01` = audio, `*_02` = karaoke (paths under [assets/videos/]).
+class _SongEntry {
+  const _SongEntry({
+    required this.id,
+    required this.audioAsset,
+    required this.karaokeAsset,
+    required this.playerTitle,
+    required this.titleChild,
+  });
 
-  static const String _chengAudioAsset = 'assets/videos/Cheng_li_lyrics.mp4';
-  static const String _chengKaraokeAsset = 'assets/videos/Cheng_li_karaoke.mp4';
-  static const String _songTitleChinese = '城里的月光';
+  final String id;
+  final String audioAsset;
+  final String karaokeAsset;
+  final String playerTitle;
+  final Widget titleChild;
+}
+
+class _KaraokeHomePageState extends State<KaraokeHomePage> {
+  /// Selected song id; null until user picks a song.
+  String? _selectedSongId;
+
+  static const _chengAudioAsset = 'assets/videos/Cheng_li_lyrics.mp4';
+  static const _chengKaraokeAsset = 'assets/videos/Cheng_li_karaoke.mp4';
+  static const _songTitleChinese = '城里的月光';
+
+  static const _gggAudioAsset = 'assets/videos/ggg_01.mp4';
+  static const _gggKaraokeAsset = 'assets/videos/ggg_02.mp4';
+
+  static const _subaruAudioAsset = 'assets/videos/Subaru_01.mp4';
+  static const _subaruKaraokeAsset = 'assets/videos/Subaru_02.mp4';
+  static const _subaruPlayerTitle = '昴';
+
+  static const _bangawanAudioAsset = 'assets/videos/Bangawan_01.mp4';
+  static const _bangawanKaraokeAsset = 'assets/videos/Bangawan_02.mp4';
+  static const _bangawanPlayerTitle = 'Bangawan Solo';
+
+  static final List<_SongEntry> _songs = [
+    _SongEntry(
+      id: 'chengli',
+      audioAsset: _chengAudioAsset,
+      karaokeAsset: _chengKaraokeAsset,
+      playerTitle: _songTitleChinese,
+      titleChild: const _SongTitleRichText(),
+    ),
+    _SongEntry(
+      id: 'ggg',
+      audioAsset: _gggAudioAsset,
+      karaokeAsset: _gggKaraokeAsset,
+      playerTitle: 'Quizás',
+      titleChild: const _GggSongTileTitle(),
+    ),
+    _SongEntry(
+      id: 'subaru',
+      audioAsset: _subaruAudioAsset,
+      karaokeAsset: _subaruKaraokeAsset,
+      playerTitle: _subaruPlayerTitle,
+      titleChild: const _SubaruSongTileTitle(),
+    ),
+    _SongEntry(
+      id: 'bangawan',
+      audioAsset: _bangawanAudioAsset,
+      karaokeAsset: _bangawanKaraokeAsset,
+      playerTitle: _bangawanPlayerTitle,
+      titleChild: const _BangawanSongTileTitle(),
+    ),
+  ];
+
+  _SongEntry? get _selectedSong {
+    if (_selectedSongId == null) return null;
+    for (final s in _songs) {
+      if (s.id == _selectedSongId) return s;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,8 +121,34 @@ class _KaraokeHomePageState extends State<KaraokeHomePage> {
     const audioColor = Color(0xFF2196F3);
     const karaokeColor = Color(0xFFE91E63);
 
-    final audioEnabled = _chengSelected;
-    final karaokeEnabled = _chengSelected;
+    final hasSelection = _selectedSong != null;
+    final audioEnabled = hasSelection;
+    final karaokeEnabled = hasSelection;
+
+    void openPlayer(String assetPath) {
+      final song = _selectedSong!;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => KaraokePage(
+            initialAssetPath: assetPath,
+            autoPlay: true,
+            songTitle: song.playerTitle,
+          ),
+        ),
+      );
+    }
+
+    Future<void> openPickSong() async {
+      final id = await Navigator.of(context).push<String?>(
+        MaterialPageRoute(
+          builder: (_) => _PickSongPage(songs: _songs),
+        ),
+      );
+      if (!mounted || id == null) return;
+      setState(() => _selectedSongId = id);
+    }
+
+    const pickColor = Color(0xFF9C27B0);
 
     return Scaffold(
       body: SafeArea(
@@ -64,79 +158,77 @@ class _KaraokeHomePageState extends State<KaraokeHomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  height: 120,
-                  child: InkWell(
-                    onTap: () {
-                      setState(() => _chengSelected = true);
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: chengColor,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _chengSelected
-                              ? const Color(0xFFE0B64A)
-                              : Colors.white.withValues(alpha: 0.25),
-                          width: 2,
+                if (_selectedSong != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: SizedBox(
+                      height: 120,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: chengColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFFE0B64A),
+                            width: 2,
+                          ),
                         ),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: _selectedSong!.titleChild,
                       ),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: const _SongTitleRichText(),
                     ),
                   ),
-                ),
                 const Spacer(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      height: 40,
-                      child: _buildModeButton(
-                        label: 'Audio',
-                        color: audioColor,
-                        enabled: audioEnabled,
-                        onTap: audioEnabled
-                            ? () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const KaraokePage(
-                                      initialAssetPath: _chengAudioAsset,
-                                      autoPlay: true,
-                                      songTitle: _songTitleChinese,
-                                    ),
-                                  ),
-                                );
-                              }
-                            : null,
-                      ),
+                Center(
+                  child: FractionallySizedBox(
+                    widthFactor: 0.52,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 40,
+                            width: double.infinity,
+                            child: _buildModeButton(
+                              label: 'Vocal',
+                              color: audioColor,
+                              enabled: audioEnabled,
+                              onTap: audioEnabled
+                                  ? () => openPlayer(_selectedSong!.audioAsset)
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SizedBox(
+                            height: 40,
+                            width: double.infinity,
+                            child: _buildModeButton(
+                              label: 'Karaoke',
+                              color: karaokeColor,
+                              enabled: karaokeEnabled,
+                              onTap: karaokeEnabled
+                                  ? () => openPlayer(_selectedSong!.karaokeAsset)
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SizedBox(
+                            height: 40,
+                            width: double.infinity,
+                            child: _buildModeButton(
+                              label: 'Pick song',
+                              color: pickColor,
+                              enabled: true,
+                              onTap: openPickSong,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    SizedBox(
-                      height: 40,
-                      child: _buildModeButton(
-                        label: 'Karaoke',
-                        color: karaokeColor,
-                        enabled: karaokeEnabled,
-                        onTap: karaokeEnabled
-                            ? () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const KaraokePage(
-                                      initialAssetPath: _chengKaraokeAsset,
-                                      autoPlay: true,
-                                      songTitle: _songTitleChinese,
-                                    ),
-                                  ),
-                                );
-                              }
-                            : null,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -175,6 +267,62 @@ class _KaraokeHomePageState extends State<KaraokeHomePage> {
             fontWeight: FontWeight.w800,
             color: enabled ? Colors.white : Colors.white70,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Lists all catalog songs; tapping one pops with that song [id] so the home screen can set selection.
+class _PickSongPage extends StatelessWidget {
+  const _PickSongPage({required this.songs});
+
+  final List<_SongEntry> songs;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pick song'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: songs.length,
+          itemBuilder: (context, index) {
+            final song = songs[index];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Material(
+                color: Colors.black,
+                child: InkWell(
+                  onTap: () => Navigator.of(context).pop<String>(song.id),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Text(
+                      song.playerTitle,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -220,6 +368,110 @@ class _SongTitleRichText extends StatelessWidget {
   }
 }
 
+/// Home tile for ggg: two lines only. [playerTitle] is `Quizás` for pick list + player overlay.
+class _GggSongTileTitle extends StatelessWidget {
+  const _GggSongTileTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: 'Quizás\n',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          TextSpan(
+            text: 'Perhaps',
+            style: TextStyle(
+              color: Colors.yellow,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+    );
+  }
+}
+
+/// Home tile for Subaru. [playerTitle] is `昴` for pick list + player overlay.
+class _SubaruSongTileTitle extends StatelessWidget {
+  const _SubaruSongTileTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '昴\n',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          TextSpan(
+            text: 'Subaru\n',
+            style: TextStyle(
+              color: Colors.blue,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          TextSpan(
+            text: 'Pleiades',
+            style: TextStyle(
+              color: Colors.yellow,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+    );
+  }
+}
+
+/// Home tile for Bangawan. [playerTitle] is `Bangawan Solo` for pick list + player overlay.
+class _BangawanSongTileTitle extends StatelessWidget {
+  const _BangawanSongTileTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: 'Bangawan Solo\n',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          TextSpan(
+            text: 'The Solo River',
+            style: TextStyle(
+              color: Colors.yellow,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+    );
+  }
+}
+
 class KaraokePage extends StatefulWidget {
   const KaraokePage({
     super.key,
@@ -239,7 +491,6 @@ class KaraokePage extends StatefulWidget {
 class _KaraokePageState extends State<KaraokePage> {
   static const String _videosFolder = 'assets/videos/';
   static const Duration _positionUpdateInterval = Duration(milliseconds: 250);
-  static const Duration _seekStep = Duration(seconds: 10);
 
   List<String> _videoAssets = [];
   String? _selectedVideo;
@@ -386,15 +637,6 @@ class _KaraokePageState extends State<KaraokePage> {
     _syncPositionFromController();
   }
 
-  Future<void> _pauseActive() async {
-    final controller = _controller;
-    if (controller == null) return;
-    if (!controller.value.isInitialized) return;
-
-    await controller.pause();
-    _syncPositionFromController();
-  }
-
   void _syncPositionFromController() {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
@@ -421,15 +663,6 @@ class _KaraokePageState extends State<KaraokePage> {
   void _stopPositionTimer() {
     _positionTimer?.cancel();
     _positionTimer = null;
-  }
-
-  Future<void> _seekTo(Duration target) async {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
-    final dur = controller.value.duration;
-    final clamped = _clampDuration(target, Duration.zero, dur);
-    await controller.seekTo(clamped);
-    _syncPositionFromController();
   }
 
   Future<void> _onSeekDragStart(double value) async {
@@ -490,19 +723,6 @@ class _KaraokePageState extends State<KaraokePage> {
   int _toHalfSecondStepMs(double sliderValueMs) {
     const step = 500;
     return ((sliderValueMs / step).round()) * step;
-  }
-
-  Duration _clampDuration(Duration value, Duration min, Duration max) {
-    if (value < min) return min;
-    if (value > max) return max;
-    return value;
-  }
-
-  String _formatTime(Duration d) {
-    final totalSeconds = d.inSeconds;
-    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
   }
 
   @override
