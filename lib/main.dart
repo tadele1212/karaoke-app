@@ -289,22 +289,22 @@ class _PickSongPage extends StatelessWidget {
       ),
       body: SafeArea(
         child: ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(10),
           itemCount: songs.length,
           itemBuilder: (context, index) {
             final song = songs[index];
             return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Material(
                 color: Colors.black,
                 child: InkWell(
                   onTap: () => Navigator.of(context).pop<String>(song.id),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(6),
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: Colors.white.withValues(alpha: 0.25),
                       ),
@@ -314,8 +314,8 @@ class _PickSongPage extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
